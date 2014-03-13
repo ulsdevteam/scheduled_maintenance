@@ -1,0 +1,5 @@
+name = Scheduled maintenance
+description = "Allows users to schedule a site maintenance."
+package = Administration
+core = 7.x
+configure = admin/config/development/scheduled_maintenance

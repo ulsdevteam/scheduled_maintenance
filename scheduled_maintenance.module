@@ -1,0 +1,115 @@
+<?php
+
+/**
+ * @file
+ * Allow users to define a scheduled maintenance.
+ */
+
+/**
+ * Implements hook_cron().
+ */
+function scheduled_maintenance_cron() {
+  $maintenance_mode = variable_get('maintenance_mode');
+  $scheduled_maintenance = variable_get('scheduled_maintenance');
+
+  if (!$maintenance_mode && $scheduled_maintenance) {
+    if ($scheduled_maintenance <= REQUEST_TIME) {
+      variable_set('maintenance_mode', 1);
+      //variable_set('scheduled_maintenance', 0);
+    }
+  }
+}
+
+/**
+ * Implements hook_init().
+ */
+function scheduled_maintenance_init() {
+  $maintenance_mode = variable_get('maintenance_mode');
+  $scheduled_maintenance = variable_get('scheduled_maintenance');
+  dpm($scheduled_maintenance);
+  /*$message = variable_get('scheduled_maintenance_msg');
+  $offset = variable_get('scheduled_maintentance_offset');
+
+  if (!$maintenance_mode && $scheduled_maintenance) {
+    // Convert date to timestamp.
+    $scheduled_maintenance = strtotime($scheduled_maintenance);
+
+    if (($scheduled_maintenance - $offset) <= REQUEST_TIME) {
+      drupal_set_message($message, 'warning');
+    }
+  }*/
+}
+
+function scheduled_maintenance_form_system_site_maintenance_mode_alter(&$form, &$form_state, $form_id) {
+  $settings = variable_get('scheduled_maintenance', array());
+
+  $form['scheduled_maintenance'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Scheduled maintenance'),
+    '#description' => t('Schedule a maintenance and show site visitors warning message in advance.')
+  );
+
+  $form['scheduled_maintenance']['time'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Maintenance time'),
+    '#default_value' => _scheduled_maintenance_get_setting($settings, 'time'),
+    '#description' => t('Schedule a maintenance by entering the maintenance start. Format: %time (YYYY-MM-DD hh:mm:ss). Leave blank to disable scheduled maintenance.', array('%time' => format_date(time(), 'custom', 'Y-m-d H:i:s'))),
+    '#size' => 20,
+  );
+
+  $form['scheduled_maintenance']['message_text'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Message'),
+    '#default_value' => _scheduled_maintenance_get_setting($settings, 'message_text'),
+    '#description' => t('Warning message for site visitors about the upcoming maintenance.'),
+  );
+
+  $form['scheduled_maintenance']['message_offset'] = array(
+    '#type' => 'item',
+    '#title' => t('Message time'),
+    '#description' => t('How long before the scheduled maintenance the warning message should appear.'),
+  );
+
+  $form['scheduled_maintenance']['message_offset']['container'] = array(
+    '#type' => 'container',
+    '#attributes' => array(
+      'class' => array('container-inline'),
+    ),
+  );
+
+  $form['scheduled_maintenance']['message_offset']['container']['value'] = array(
+    '#type' => 'textfield',
+    //'#default_value' => _scheduled_maintenance_get_setting($settings, 'time'),
+    '#size' => 3,
+  );
+
+  $form['scheduled_maintenance']['message_offset']['container']['unit'] = array(
+    '#type' => 'select',
+    '#options' => array(
+      'days' => 'day(s)',
+      'hours' => 'hour(s)',
+      'minutes' => 'minute(s)',
+      'seconds' => 'second(s)',
+    ),
+    //'#default_value' => _scheduled_maintenance_get_setting($settings, 'time'),
+    '#field_suffix' => t('before'),
+  );
+}
+
+/**
+ * Returns a setting.
+ *
+ * @param array $settings_array
+ *   An associative array with settings.
+ * @param string $name
+ *   The name of the setting to return.
+ * @param mixed $default
+ *   The default value to set if this setting has never been set. Defaults to
+ *   NULL.
+ *
+ * @return mixed
+ *   The value of the setting.
+ */
+function _scheduled_maintenance_get_setting(array $settings_array, $name, $default = NULL) {
+  return isset($settings_array[$name]) ? $settings_array[$name] : $default;
+}
