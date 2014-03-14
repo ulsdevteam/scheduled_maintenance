@@ -59,11 +59,10 @@ function scheduled_maintenance_init() {
     // Convert message time offset to timestamp.
     $message_timestamp = strtotime("-$offset_value $offset_unit", $timestamp);
 
-    // If message time is less than or equal to the current time, pass the
-    // message text through check_plain() and show it.
+    // If message time is less than or equal to the current time, show the
+    // message.
     if ($message_timestamp <= REQUEST_TIME) {
-      $message = check_plain($message);
-      drupal_set_message(t($message), 'warning', FALSE);
+      drupal_set_message(t('@maintenance_warning_message', array('@maintenance_warning_message' => $message)), 'warning', FALSE);
     }
   }
 }
@@ -75,7 +74,7 @@ function scheduled_maintenance_form_system_site_maintenance_mode_alter(&$form, &
   $form['scheduled_maintenance'] = array(
     '#type' => 'fieldset',
     '#title' => t('Scheduled maintenance'),
-    '#description' => t('Schedule a maintenance and show site visitors warning message in advance.')
+    '#description' => t('Schedule a maintenance and show site visitors warning message in advance.'),
   );
 
   $form['scheduled_maintenance']['scheduled_maintenance_time'] = array(
@@ -134,7 +133,7 @@ function scheduled_maintenance_form_system_site_maintenance_mode_alter(&$form, &
  *   The form element.
  */
 function _scheduled_maintenance_element_validate_date($element) {
-  $date = $element['#value'];
+  $date = trim($element['#value']);
 
   if ($date && !_scheduled_maintenance_validate_date($date)) {
     form_error($element, t('%name must be in format YYYY-DD-MM hh:mm:ss.', array('%name' => $element['#title'])));
