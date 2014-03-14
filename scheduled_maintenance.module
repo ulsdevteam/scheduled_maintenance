@@ -6,9 +6,9 @@
  */
 
 /**
- * Implements hook_cron().
+ * Implements hook_init().
  */
-function scheduled_maintenance_cron() {
+function scheduled_maintenance_init() {
   // Get variable values.
   $maintenance_mode = variable_get('maintenance_mode');
   $time = variable_get('scheduled_maintenance_time');
@@ -16,6 +16,11 @@ function scheduled_maintenance_cron() {
   // Validate that maintenance mode is not enabled and that a maintenance time
   // is set.
   if ($maintenance_mode || !$time) {
+    return;
+  }
+
+  // Validate the date and time format.
+  if (!_scheduled_maintenance_validate_date($time)) {
     return;
   }
 
@@ -23,34 +28,23 @@ function scheduled_maintenance_cron() {
   $timestamp = strtotime($time);
 
   // If maintenance time is less than or equal to the current time, enable
-  // maintenance mode.
+  // maintenance mode and delete the maintenance time variable.
   if ($timestamp <= REQUEST_TIME) {
     variable_set('maintenance_mode', 1);
+    variable_del('scheduled_maintenance_time');
   }
-}
+  else {
+    // Get message variable value.
+    $message = variable_get('scheduled_maintenance_message');
 
-/**
- * Implements hook_init().
- */
-function scheduled_maintenance_init() {
-  // Get variable values.
-  $maintenance_mode = variable_get('maintenance_mode');
-  $time = variable_get('scheduled_maintenance_time');
-  $message = variable_get('scheduled_maintenance_message');
-  $offset_value = variable_get('scheduled_maintenance_message_offset_value');
-  $offset_unit = variable_get('scheduled_maintenance_message_offset_unit');
+    // Validate that there is a message set.
+    if (!$message) {
+      return;
+    }
 
-  // Validate that maintenance mode is not enabled and that a maintenance time
-  // is set.
-  if ($maintenance_mode || !$time) {
-    return;
-  }
-
-  // Convert time to timestamp.
-  $timestamp = strtotime($time);
-
-  // Validate that a maintenance time is set in the future.
-  if ($timestamp >= REQUEST_TIME) {
+    // Get message time variable values.
+    $offset_value = variable_get('scheduled_maintenance_message_offset_value');
+    $offset_unit = variable_get('scheduled_maintenance_message_offset_unit');
 
     // Validate message time offset unit to one of the allowed units.
     if (!$offset_unit || !array_key_exists($offset_unit, _scheduled_maintenance_get_allowed_units())) {
@@ -62,13 +56,14 @@ function scheduled_maintenance_init() {
       return;
     }
 
-    // Convert message offset to timestamp.
+    // Convert message time offset to timestamp.
     $message_timestamp = strtotime("-$offset_value $offset_unit", $timestamp);
 
-    // If message time is less than or equal to the current time, show the
-    // message.
+    // If message time is less than or equal to the current time, pass the
+    // message text through check_plain() and show it.
     if ($message_timestamp <= REQUEST_TIME) {
-      drupal_set_message($message, 'warning');
+      $message = check_plain($message);
+      drupal_set_message(t($message), 'warning', FALSE);
     }
   }
 }
@@ -96,7 +91,7 @@ function scheduled_maintenance_form_system_site_maintenance_mode_alter(&$form, &
     '#type' => 'textfield',
     '#title' => t('Message'),
     '#default_value' => variable_get('scheduled_maintenance_message'),
-    '#description' => t('Warning message for site visitors about the upcoming maintenance.'),
+    '#description' => t('Warning message for site visitors about the upcoming maintenance. No HTML tags allowed.'),
   );
 
   $form['scheduled_maintenance']['scheduled_maintenance_message_offset'] = array(
