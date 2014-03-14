@@ -9,14 +9,23 @@
  * Implements hook_cron().
  */
 function scheduled_maintenance_cron() {
+  // Get variable values.
   $maintenance_mode = variable_get('maintenance_mode');
-  $scheduled_maintenance = variable_get('scheduled_maintenance');
+  $time = variable_get('scheduled_maintenance_time');
 
-  if (!$maintenance_mode && $scheduled_maintenance) {
-    if ($scheduled_maintenance <= REQUEST_TIME) {
-      variable_set('maintenance_mode', 1);
-      //variable_set('scheduled_maintenance', 0);
-    }
+  // Validate that maintenance mode is not enabled and that a maintenance time
+  // is set.
+  if ($maintenance_mode || !$time) {
+    return;
+  }
+
+  // Convert time to timestamp.
+  $timestamp = strtotime($time);
+
+  // If maintenance time is less than or equal to the current time, enable
+  // maintenance mode.
+  if ($timestamp <= REQUEST_TIME) {
+    variable_set('maintenance_mode', 1);
   }
 }
 
@@ -24,92 +33,149 @@ function scheduled_maintenance_cron() {
  * Implements hook_init().
  */
 function scheduled_maintenance_init() {
+  // Get variable values.
   $maintenance_mode = variable_get('maintenance_mode');
-  $scheduled_maintenance = variable_get('scheduled_maintenance');
-  dpm($scheduled_maintenance);
-  /*$message = variable_get('scheduled_maintenance_msg');
-  $offset = variable_get('scheduled_maintentance_offset');
+  $time = variable_get('scheduled_maintenance_time');
+  $message = variable_get('scheduled_maintenance_message');
+  $offset_value = variable_get('scheduled_maintenance_message_offset_value');
+  $offset_unit = variable_get('scheduled_maintenance_message_offset_unit');
 
-  if (!$maintenance_mode && $scheduled_maintenance) {
-    // Convert date to timestamp.
-    $scheduled_maintenance = strtotime($scheduled_maintenance);
+  // Validate that maintenance mode is not enabled and that a maintenance time
+  // is set.
+  if ($maintenance_mode || !$time) {
+    return;
+  }
 
-    if (($scheduled_maintenance - $offset) <= REQUEST_TIME) {
+  // Convert time to timestamp.
+  $timestamp = strtotime($time);
+
+  // Validate that a maintenance time is set in the future.
+  if ($timestamp >= REQUEST_TIME) {
+
+    // Validate message time offset unit to one of the allowed units.
+    if (!$offset_unit || !array_key_exists($offset_unit, _scheduled_maintenance_get_allowed_units())) {
+      return;
+    }
+
+    // Validate message time offset value to a positive integer.
+    if ($offset_value === '' || (!is_numeric($offset_value) || intval($offset_value) != $offset_value || $offset_value <= 0)) {
+      return;
+    }
+
+    // Convert message offset to timestamp.
+    $message_timestamp = strtotime("-$offset_value $offset_unit", $timestamp);
+
+    // If message time is less than or equal to the current time, show the
+    // message.
+    if ($message_timestamp <= REQUEST_TIME) {
       drupal_set_message($message, 'warning');
     }
-  }*/
+  }
 }
 
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
 function scheduled_maintenance_form_system_site_maintenance_mode_alter(&$form, &$form_state, $form_id) {
-  $settings = variable_get('scheduled_maintenance', array());
-
   $form['scheduled_maintenance'] = array(
     '#type' => 'fieldset',
     '#title' => t('Scheduled maintenance'),
     '#description' => t('Schedule a maintenance and show site visitors warning message in advance.')
   );
 
-  $form['scheduled_maintenance']['time'] = array(
+  $form['scheduled_maintenance']['scheduled_maintenance_time'] = array(
     '#type' => 'textfield',
     '#title' => t('Maintenance time'),
-    '#default_value' => _scheduled_maintenance_get_setting($settings, 'time'),
+    '#default_value' => variable_get('scheduled_maintenance_time'),
     '#description' => t('Schedule a maintenance by entering the maintenance start. Format: %time (YYYY-MM-DD hh:mm:ss). Leave blank to disable scheduled maintenance.', array('%time' => format_date(time(), 'custom', 'Y-m-d H:i:s'))),
     '#size' => 20,
+    '#element_validate' => array('_scheduled_maintenance_element_validate_date'),
   );
 
-  $form['scheduled_maintenance']['message_text'] = array(
+  $form['scheduled_maintenance']['scheduled_maintenance_message'] = array(
     '#type' => 'textfield',
     '#title' => t('Message'),
-    '#default_value' => _scheduled_maintenance_get_setting($settings, 'message_text'),
+    '#default_value' => variable_get('scheduled_maintenance_message'),
     '#description' => t('Warning message for site visitors about the upcoming maintenance.'),
   );
 
-  $form['scheduled_maintenance']['message_offset'] = array(
+  $form['scheduled_maintenance']['scheduled_maintenance_message_offset'] = array(
     '#type' => 'item',
-    '#title' => t('Message time'),
-    '#description' => t('How long before the scheduled maintenance the warning message should appear.'),
+    '#title' => t('Show message'),
+    '#description' => t('How long before the scheduled maintenance the warning message should appear. Leave blank to disable message.'),
   );
 
-  $form['scheduled_maintenance']['message_offset']['container'] = array(
+  $form['scheduled_maintenance']['scheduled_maintenance_message_offset']['container'] = array(
     '#type' => 'container',
     '#attributes' => array(
       'class' => array('container-inline'),
     ),
   );
 
-  $form['scheduled_maintenance']['message_offset']['container']['value'] = array(
+  $form['scheduled_maintenance']['scheduled_maintenance_message_offset']['container']['scheduled_maintenance_message_offset_value'] = array(
+    '#title' => t('Message time'),
+    '#title_display' => 'invisible',
     '#type' => 'textfield',
-    //'#default_value' => _scheduled_maintenance_get_setting($settings, 'time'),
+    '#default_value' => variable_get('scheduled_maintenance_message_offset_value'),
     '#size' => 3,
+    '#element_validate' => array('element_validate_integer_positive'),
   );
 
-  $form['scheduled_maintenance']['message_offset']['container']['unit'] = array(
+  $form['scheduled_maintenance']['scheduled_maintenance_message_offset']['container']['scheduled_maintenance_message_offset_unit'] = array(
     '#type' => 'select',
-    '#options' => array(
-      'days' => 'day(s)',
-      'hours' => 'hour(s)',
-      'minutes' => 'minute(s)',
-      'seconds' => 'second(s)',
-    ),
-    //'#default_value' => _scheduled_maintenance_get_setting($settings, 'time'),
+    '#options' => _scheduled_maintenance_get_allowed_units(),
+    '#default_value' => variable_get('scheduled_maintenance_message_offset_unit'),
     '#field_suffix' => t('before'),
   );
 }
 
 /**
- * Returns a setting.
+ * Helper function to validate the format of a date in a form field.
  *
- * @param array $settings_array
- *   An associative array with settings.
- * @param string $name
- *   The name of the setting to return.
- * @param mixed $default
- *   The default value to set if this setting has never been set. Defaults to
- *   NULL.
+ * To be used in forms with the "#element_validate" attribute. An empty value is
+ * considered valid.
  *
- * @return mixed
- *   The value of the setting.
+ * @param array $element
+ *   The form element.
  */
-function _scheduled_maintenance_get_setting(array $settings_array, $name, $default = NULL) {
-  return isset($settings_array[$name]) ? $settings_array[$name] : $default;
+function _scheduled_maintenance_element_validate_date($element) {
+  $date = $element['#value'];
+
+  if ($date && !_scheduled_maintenance_validate_date($date)) {
+    form_error($element, t('%name must be in format YYYY-DD-MM hh:mm:ss.', array('%name' => $element['#title'])));
+  }
+}
+
+/**
+ * Helper function to validate that a date string is in the correct format.
+ *
+ * @param string $date
+ *   The date string to validate.
+ * @param string $format
+ *   (optional) The PHP date format in which $date should follow. Defaults to
+ *   "Y-m-d H:i:s", which is equivalent to "YYYY-MM-DD hh:mm:ss".
+ *
+ * @return bool
+ *   TRUE if $date is in correct format, otherwise FALSE.
+ *
+ * @see http://www.php.net/manual/en/function.date.php
+ */
+function _scheduled_maintenance_validate_date($date, $format = 'Y-m-d H:i:s') {
+  $d = DateTime::createFromFormat($format, $date);
+  return $d && $d->format($format) == $date;
+}
+
+/**
+ * Helper function to get allowed units for message time offset field.
+ *
+ * @return array
+ *   Returns an associative array of allowed units.
+ */
+function _scheduled_maintenance_get_allowed_units() {
+  return array(
+    'days' => t('day(s)'),
+    'hours' => t('hour(s)'),
+    'minutes' => t('minute(s)'),
+    'seconds' => t('second(s)'),
+  );
 }
