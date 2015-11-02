@@ -173,3 +173,16 @@ function _scheduled_maintenance_get_allowed_units() {
     'seconds' => t('second(s)'),
   );
 }
+
+/**
+ * Implements hook_variable_info().
+ */
+function scheduled_maintenance_variable_info($options) {
+  $variable['scheduled_maintenance_message'] = array(
+    'type' => 'string',
+    'title' => t('Scheduled maintenance message', array(), $options),
+    'description' => t('Warning message for site visitors about the upcoming maintenance.', array(), $options),
+    'group' => 'site_information',
+  );
+  return $variable;
+}
